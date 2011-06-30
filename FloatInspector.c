@@ -1,0 +1,323 @@
+//
+//  FloatInspector.c
+//  FloatInspector
+//
+//  Copyright 2011 Stefan Reinhold <stefan@sreinhold.com>. All rights reserved.
+//  
+//  Redistribution and use in source and binary forms, with or without modification, are
+//  permitted provided that the following conditions are met:
+//  
+//  1. Redistributions of source code must retain the above copyright notice, this list of
+//  conditions and the following disclaimer.
+//  
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list
+//  of conditions and the following disclaimer in the documentation and/or other materials
+//  provided with the distribution.
+//  
+//  THIS SOFTWARE IS PROVIDED BY STEFAN REINHOLD ``AS IS'' AND ANY EXPRESS OR IMPLIED
+//  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+//  FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL STEFAN REINHOLD OR
+//  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+//  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+//  ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+//  NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+//  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  
+//  The views and conclusions contained in the software and documentation are those of the
+//  authors and should not be interpreted as representing official policies, either expressed
+//  or implied, of Stefan Reinhold.
+//  
+
+
+#include "FloatInspector.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <float.h>
+
+#pragma mark Constant
+
+const FloatInspectorMetaInformation kFloatInspectorMetaInformationError = {
+	.exponent = NULL,
+	.nExponentBits = 0,
+	.nExponentBytes = 0,
+	.nNonZeroExponentBits = 0,
+	
+	.mantissa = NULL,
+	.nMantissaBits = 0,
+	.nMantissaBytes = 0,
+	.nNonZeroMantissaBits = 0,
+	
+	.sign = Positive,
+	
+	.type = NaN
+	
+};
+
+
+#pragma mark Private Function Prototypes
+
+
+const FloatInspectorMetaInformation 
+FloatInspectorMetaInformationCreateGeneric(void *f, 
+										   unsigned int nExp, 
+										   unsigned int nMant);
+
+
+#pragma mark Private Functions Implementations
+
+const FloatInspectorMetaInformation 
+FloatInspectorMetaInformationCreateGeneric(void *f, 
+										   unsigned int nExp, 
+										   unsigned int nMant) {
+	
+	const unsigned int overallBytes = (1 + nExp + nMant) >> 3;
+	const unsigned int nExpBytes = 
+		nExp % 8 == 0 ? nExp >> 3 : (nExp >> 3) + 1;
+	const unsigned int nMantBytes = 
+		nMant % 8 == 0 ? nMant >> 3 : (nMant >> 3) + 1;
+	const uint8_t *bytes = (uint8_t *) f;
+	
+	FloatInspectorMetaInformation meta;
+	
+	/* Set size information.  */
+	meta.nExponentBits = nExp;
+	meta.nExponentBytes = nExpBytes;
+	meta.nMantissaBits = nMant;
+	meta.nMantissaBytes = nMantBytes;
+	
+	/* Allocate memory for exponent an mantissa.  */
+	meta.exponent = (uint8_t *) malloc(nExpBytes);
+	meta.mantissa = (uint8_t *) malloc(nMantBytes);
+	
+	if ((meta.exponent == NULL) || (meta.mantissa == NULL)) {
+		
+		return kFloatInspectorMetaInformationError;
+	}
+	
+	/* Extract sign.  */
+	meta.sign = (bytes[overallBytes - 1] & (1 << 7)) != 0;
+	
+	/* Extract exponent.  */
+	{
+		const unsigned int offset = (nExp + 1) % 8;
+		const unsigned int occupiedBytes = (nExp + 1) % 8 == 0 ?
+			(nExp + 1) >> 3 : ((nExp + 1) >> 3) + 1;
+		
+		for (unsigned int i = overallBytes - occupiedBytes, j = 0;
+			 i < overallBytes - 1;
+			 i++, j++) {
+			
+			if (offset != 0) {
+				
+				meta.exponent[j] = (uint8_t) ((bytes[i] >> (8 - offset)) |
+											  (bytes[i + 1] << offset));
+			}
+			else {
+				
+				meta.exponent[j] = bytes[i];
+			}
+			
+		}
+		
+		meta.exponent[nExpBytes - 1] |= 
+			(bytes[overallBytes - 1] & 0x7f) >> (offset == 0 ? 0 : (8 - offset));
+	}
+	
+	/* Extract mantissa.  */
+	{
+		const unsigned int rest = nMant % 8;
+		memcpy(meta.mantissa, bytes, nMantBytes - 1);
+		/* Clear the upper 8-res' bits.  */
+		uint8_t mask = 0x00;
+		for (unsigned int i = 0; i < rest; i++) {
+			
+			mask = (uint8_t) (mask << 1) | 0x01;
+		}
+		meta.mantissa[nMantBytes - 1] = bytes[nMantBytes - 1] & mask;
+	}
+	
+	/* Count non-zero exponent bits.  */
+	{
+		/* Count zero bytes.  */
+		unsigned int nZeroBytes = 0;
+		while ((nZeroBytes < nExpBytes) && 
+			   (meta.exponent[nExpBytes - nZeroBytes - 1] == 0)) nZeroBytes++;
+		
+		
+		/* Count non-zero bits in last non-zero byte.  */
+		unsigned int nNonZeroBits = 0;
+		if (nZeroBytes < nExpBytes) {
+			
+			uint8_t byte = meta.exponent[nExpBytes - nZeroBytes - 1];
+			while (byte != 0) {
+				
+				nNonZeroBits++;
+				byte >>= 1;
+			}
+		}
+		
+		if ((nZeroBytes << 3) < nExp) {
+			
+			meta.nNonZeroExponentBits = 
+				nExp - ((nZeroBytes << 3) + (8 - nNonZeroBits));
+		}
+		else {
+			
+			meta.nNonZeroExponentBits = 0;
+		}
+	}
+	
+	/* Count non-zero mantissa bits.  */
+	{
+		/* Coount zero bytes.  */
+		unsigned int nZeroBytes = 0;
+		while ((nZeroBytes < nMantBytes) && (meta.mantissa[nZeroBytes] == 0))
+			nZeroBytes++;
+		
+		/* Count non-zero bits in first non-zero byte.  */
+		unsigned int nNonZeroBits = 0;
+		if (nZeroBytes < nMantBytes) {
+			
+			uint8_t byte = meta.mantissa[nZeroBytes];
+			while (byte != 0) {
+				
+				nNonZeroBits++;
+				byte >>= 1;
+			}
+		}
+		
+		if ((nZeroBytes << 3) < nMant) {
+			
+			meta.nNonZeroMantissaBits = 
+				nMant - ((nZeroBytes << 3) + (8 - nNonZeroBits));
+		}
+		else {
+			
+			meta.nNonZeroMantissaBits = 0;
+		}
+	}
+	
+	/* Determine type.  */
+	if ((meta.nNonZeroExponentBits == 0) && (meta.nNonZeroMantissaBits > 0)) {
+		
+		meta.type = Denormalized;
+	}
+	else if (meta.nNonZeroExponentBits == meta.nExponentBits) {
+		
+		if (meta.nNonZeroMantissaBits == 0) {
+			
+			meta.type = Infinity;
+		}
+		else {
+			
+			meta.type = NaN;
+		}
+	}
+	else {
+		
+		meta.type = Normalized;
+	}
+	
+	return meta;
+}
+
+#pragma mark Public Functions Implementations
+
+const FloatInspectorMetaInformation 
+FloatInspectorMetaInformationCreateWithFloat(float f) {
+	
+	const unsigned int nMant = FLT_MANT_DIG - 1;
+	const unsigned int nExp = (unsigned int) (sizeof(f) << 3) - nMant - 1;
+	
+	return FloatInspectorMetaInformationCreateGeneric(&f, nExp, nMant);
+}
+
+const FloatInspectorMetaInformation 
+FloatInspectorMetaInformationCreateWithDouble(double f) {
+	
+	const unsigned int nMant = DBL_MANT_DIG - 1;
+	const unsigned int nExp = (unsigned int) (sizeof(f) << 3) - nMant - 1;
+	
+	return FloatInspectorMetaInformationCreateGeneric(&f, nExp, nMant);
+}
+
+const FloatInspectorMetaInformation 
+FloatInspectorMetaInformationCreateWithLongDouble(long double f) {
+	
+	const unsigned int nMant = LDBL_MANT_DIG - 1;
+	const unsigned int nExp = (unsigned int) (sizeof(f) << 3) - nMant - 1;
+	
+	return FloatInspectorMetaInformationCreateGeneric(&f, nExp, nMant);
+}
+
+void 
+FloatInspectorMetaInformationDelete(const FloatInspectorMetaInformation meta) {
+	
+	free(meta.exponent);
+	free(meta.mantissa);
+}
+
+
+const char *
+FloatInspectorMetaInformationDescription(const FloatInspectorMetaInformation meta) {
+	
+	static char buffer[1024];
+	static char expBuffer[128];
+	static char mantBuffer[128];
+	
+	for (unsigned int i = 0; i < meta.nExponentBytes; i++) {
+		sprintf(&expBuffer[2 * i], "%.2x", meta.exponent[meta.nExponentBytes - i - 1]);
+	}
+	
+	for (unsigned int i = 0; i < meta.nMantissaBytes; i++) {
+		sprintf(&mantBuffer[2 * i], "%.2x", meta.mantissa[meta.nMantissaBytes - i - 1]);
+	}
+	
+	const char *typeStr;
+	
+	switch (meta.type) {
+		case Normalized:
+			typeStr = "Normalized";
+			break;
+			
+		case Denormalized:
+			typeStr = "Denormalized";
+			break;
+			
+		case NaN:
+			typeStr = "Not a Number";
+			break;
+			
+		case Infinity:
+			typeStr = "Infinity";
+			break;
+			
+		default:
+			typeStr = "Unknown";
+			break;
+	}
+	
+	sprintf(buffer, 
+			"Sign:\t\t\t\t\t\t\t\t%s\n"
+			"Type:\t\t\t\t\t\t\t\t%s\n"
+			"Exponent length:\t\t\t\t\t%u bits\n"
+			"Number of non zero exponent bits:\t%u\n"
+			"Exponent:\t\t\t\t\t\t\t0x%s\n"
+			"Mantissa length:\t\t\t\t\t%u bits\n"
+			"Number of non zero mantissa bits:\t%u\n"
+			"Mantissa:\t\t\t\t\t\t\t0x%s\n",
+			meta.sign == Positive ? "+" : "-",
+			typeStr,
+			meta.nExponentBits,
+			meta.nNonZeroExponentBits,
+			expBuffer,
+			meta.nMantissaBits,
+			meta.nNonZeroMantissaBits,
+			mantBuffer
+			);
+	
+	return buffer;
+}
