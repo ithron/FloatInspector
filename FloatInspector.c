@@ -37,6 +37,7 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
+#include <assert.h>
 
 #pragma mark Constant
 
@@ -92,6 +93,9 @@ FloatInspectorMetaInformationCreateGeneric(void *f,
 	/* Allocate memory for exponent an mantissa.  */
 	meta.exponent = (uint8_t *) malloc(nExpBytes);
 	meta.mantissa = (uint8_t *) malloc(nMantBytes);
+	
+	bzero(meta.exponent, nExpBytes);
+	bzero(meta.mantissa, nMantBytes);
 	
 	if ((meta.exponent == NULL) || (meta.mantissa == NULL)) {
 		
@@ -163,13 +167,15 @@ FloatInspectorMetaInformationCreateGeneric(void *f,
 		if ((nZeroBytes << 3) < nExp) {
 			
 			meta.nNonZeroExponentBits = 
-				nExp - ((nZeroBytes << 3) + (8 - nNonZeroBits));
+				nExp - ((nZeroBytes << 3) + ((nExp % 8) - nNonZeroBits));
 		}
 		else {
 			
 			meta.nNonZeroExponentBits = 0;
 		}
 	}
+	
+	assert(meta.nNonZeroExponentBits <= meta.nExponentBits);
 	
 	/* Count non-zero mantissa bits.  */
 	{
@@ -193,13 +199,15 @@ FloatInspectorMetaInformationCreateGeneric(void *f,
 		if ((nZeroBytes << 3) < nMant) {
 			
 			meta.nNonZeroMantissaBits = 
-				nMant - ((nZeroBytes << 3) + (8 - nNonZeroBits));
+				nMant - ((nZeroBytes << 3) + ((nMant % 8) - nNonZeroBits));
 		}
 		else {
 			
 			meta.nNonZeroMantissaBits = 0;
 		}
 	}
+	
+	assert(meta.nNonZeroMantissaBits <= meta.nMantissaBits);
 	
 	/* Determine type.  */
 	if ((meta.nNonZeroExponentBits == 0) && (meta.nNonZeroMantissaBits > 0)) {
