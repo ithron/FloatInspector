@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <float.h>
+#include <math.h>
 
 #pragma mark Constant
 
@@ -207,13 +208,41 @@ FloatInspectorMetaInformationCreateGeneric(void *f,
 	}
 	else if (meta.nNonZeroExponentBits == meta.nExponentBits) {
 		
-		if (meta.nNonZeroMantissaBits == 0) {
+		unsigned int unsetBitsFound = 0;
+		for (unsigned int i = 0; i < meta.nExponentBytes - 1; i++) {
+			if (meta.exponent[i] != 0xff) {
+				unsetBitsFound = 1;
+				break;
+			}
+		}
+		
+		if (unsetBitsFound == 0) {
+			const unsigned int nBitsLeft = 
+				meta.nExponentBits - (meta.nExponentBytes - 1) * 8;
 			
-			meta.type = Infinity;
+			for (unsigned int i = 0; i < nBitsLeft; i++) {
+				
+				if ((meta.exponent[meta.nExponentBytes - 1] & (1 << i)) == 0) {
+					
+					unsetBitsFound = 1;
+					break;
+				}
+			}
+		}
+		
+		if (unsetBitsFound == 0) {
+			if (meta.nNonZeroMantissaBits == 0) {
+			
+				meta.type = Infinity;
+			}
+			else {
+			
+				meta.type = NaN;
+			}
 		}
 		else {
 			
-			meta.type = NaN;
+			meta.type = Normalized;
 		}
 	}
 	else {
@@ -247,14 +276,14 @@ FloatInspectorMetaInformationCreateWithDouble(double f) {
 const FloatInspectorMetaInformation 
 FloatInspectorMetaInformationCreateWithLongDouble(long double f) {
 	
-	const unsigned int nMant = LDBL_MANT_DIG - 1;
-	const unsigned int nExp = (unsigned int) (sizeof(f) << 3) - nMant - 1;
+	const unsigned int nMant = LDBL_MANT_DIG;
+	const unsigned int nExp = (unsigned int) ceilf(log2f(LDBL_MAX_EXP - LDBL_MIN_EXP));
 	
 	return FloatInspectorMetaInformationCreateGeneric(&f, nExp, nMant);
 }
 
 void 
-FloatInspectorMetaInformationDelete(const FloatInspectorMetaInformation meta) {
+FloatInspectorMetaInformationFree(const FloatInspectorMetaInformation meta) {
 	
 	free(meta.exponent);
 	free(meta.mantissa);
@@ -321,3 +350,344 @@ FloatInspectorMetaInformationDescription(const FloatInspectorMetaInformation met
 	
 	return buffer;
 }
+
+FloatInspectorStatisticsRef 
+FloatInspectorStatisticsCreateFloat(void) {
+	
+	FloatInspectorStatisticsRef stats = malloc(sizeof(_FloatInspectorStatistics));
+	_FloatInspectorStatistics _stats = {
+	
+		.nEntries		= 0,
+		.nDenormalized	= 0,
+		.nNormalized	= 0,
+		.nNegative		= 0,
+		.nPositive		= 1,
+		.nNaN			= 0,
+		.nInf			= 0,
+		
+		.type			= Float,
+		
+		.nBits			= sizeof(float) * 8,
+		.nExponentBits	= sizeof(float) * 8 - FLT_MANT_DIG,
+		.nMantissaBits	= FLT_MANT_DIG - 1,
+		
+		.nNonZeroBitsNormalizedPositive		= NULL,
+		.nNonZeroBitsDenormalizedPositive	= NULL,
+		
+		.nNonZeroBitsNormalizedNegative		= NULL,
+		.nNonZeroBitsDenormalizedNegative	= NULL
+	};
+	
+	*stats = _stats;
+	
+	stats->nNonZeroBitsNormalizedPositive = (unsigned int *)
+		malloc(sizeof(unsigned int) * (_stats.nExponentBits + 1) * 
+			   (_stats.nMantissaBits + 1));
+	
+	stats->nNonZeroBitsDenormalizedPositive = (unsigned int*)
+		malloc(sizeof(unsigned int) * (_stats.nMantissaBits + 1));
+	
+	stats->nNonZeroBitsNormalizedNegative = (unsigned int *)
+		malloc(sizeof(unsigned int) * (_stats.nExponentBits + 1) *
+			   (_stats.nMantissaBits + 1));
+	
+	stats->nNonZeroBitsDenormalizedNegative = (unsigned int*)
+		malloc(sizeof(unsigned int) * (_stats.nMantissaBits + 1));
+	
+	return stats;
+}
+
+FloatInspectorStatisticsRef 
+FloatInspectorStatisticsCreateDouble(void) {
+	
+	FloatInspectorStatisticsRef stats = malloc(sizeof(_FloatInspectorStatistics));
+	_FloatInspectorStatistics _stats = {
+		
+		.nEntries		= 0,
+		.nDenormalized	= 0,
+		.nNormalized	= 0,
+		.nNegative		= 0,
+		.nPositive		= 1,
+		.nNaN			= 0,
+		.nInf			= 0,
+		
+		.type			= Double,
+		
+		.nBits			= sizeof(double) * 8,
+		.nExponentBits	= sizeof(double) * 8 - DBL_MANT_DIG,
+		.nMantissaBits	= DBL_MANT_DIG - 1,
+		
+		.nNonZeroBitsNormalizedPositive		= NULL,
+		.nNonZeroBitsDenormalizedPositive	= NULL,
+		
+		.nNonZeroBitsNormalizedNegative		= NULL,
+		.nNonZeroBitsDenormalizedNegative	= NULL
+	};
+	
+	*stats = _stats;
+	
+	stats->nNonZeroBitsNormalizedPositive = (unsigned int *)
+	malloc(sizeof(unsigned int) * (_stats.nExponentBits + 1) * 
+		   (_stats.nMantissaBits + 1));
+	
+	stats->nNonZeroBitsDenormalizedPositive = (unsigned int*)
+	malloc(sizeof(unsigned int) * (_stats.nMantissaBits + 1));
+	
+	stats->nNonZeroBitsNormalizedNegative = (unsigned int *)
+	malloc(sizeof(unsigned int) * (_stats.nExponentBits + 1) * 
+		   (_stats.nMantissaBits + 1));
+	
+	stats->nNonZeroBitsDenormalizedNegative = (unsigned int*)
+	malloc(sizeof(unsigned int) * (_stats.nMantissaBits + 1));
+	
+	return stats;
+}
+
+FloatInspectorStatisticsRef 
+FloatInspectorStatisticsCreateLongDouble(void) {
+	
+	FloatInspectorStatisticsRef stats = malloc(sizeof(_FloatInspectorStatistics));
+	_FloatInspectorStatistics _stats = {
+		
+		.nEntries		= 0,
+		.nDenormalized	= 0,
+		.nNormalized	= 0,
+		.nNegative		= 0,
+		.nPositive		= 0,
+		.nNaN			= 0,
+		.nInf			= 0,
+		
+		.type			= LongDouble,
+		
+		.nBits			= sizeof(long double) * 8,
+		.nExponentBits	= sizeof(long double) * 8 - LDBL_MANT_DIG,
+		.nMantissaBits	= LDBL_MANT_DIG - 1,
+		
+		.nNonZeroBitsNormalizedPositive		= NULL,
+		.nNonZeroBitsDenormalizedPositive	= NULL,
+		
+		.nNonZeroBitsNormalizedNegative		= NULL,
+		.nNonZeroBitsDenormalizedNegative	= NULL
+	};
+	
+	*stats = _stats;
+	
+	stats->nNonZeroBitsNormalizedPositive = (unsigned int *)
+	malloc(sizeof(unsigned int) * (_stats.nExponentBits + 1) * 
+		   (_stats.nMantissaBits + 1));
+	
+	stats->nNonZeroBitsDenormalizedPositive = (unsigned int*)
+	malloc(sizeof(unsigned int) * (_stats.nMantissaBits + 1));
+	
+	stats->nNonZeroBitsNormalizedNegative = (unsigned int *)
+	malloc(sizeof(unsigned int) * (_stats.nExponentBits + 1) * 
+		   (_stats.nMantissaBits + 1));
+	
+	stats->nNonZeroBitsDenormalizedNegative = (unsigned int*)
+	malloc(sizeof(unsigned int) * (_stats.nMantissaBits + 1));
+	
+	return stats;
+}
+
+void FloatInspectorStatisticsFree(FloatInspectorStatisticsRef stats) {
+	
+	free(stats->nNonZeroBitsNormalizedPositive);
+	free(stats->nNonZeroBitsDenormalizedPositive);
+	free(stats->nNonZeroBitsNormalizedNegative);
+	free(stats->nNonZeroBitsDenormalizedNegative);
+	
+	free(stats);
+}
+
+void 
+FloatInspectorStatisticsUpdateWithFloat(FloatInspectorStatisticsRef stats, 
+										float f) {
+
+	FloatInspectorMetaInformation meta = 
+		FloatInspectorMetaInformationCreateWithFloat(f);
+	
+	FloatInspectorStatisticsUpdateWithMetaInformation(stats, meta);
+	
+	FloatInspectorMetaInformationFree(meta);
+	
+}
+
+void 
+FloatInspectorStatisticsUpdateWithDouble(FloatInspectorStatisticsRef stats, 
+										 double f) {
+	
+	FloatInspectorMetaInformation meta = 
+	FloatInspectorMetaInformationCreateWithDouble(f);
+	
+	FloatInspectorStatisticsUpdateWithMetaInformation(stats, meta);
+	
+	FloatInspectorMetaInformationFree(meta);
+}
+
+void
+FloatInspectorStatisticsUpdateWithLongDouble(FloatInspectorStatisticsRef stats, 
+											 long double f) {
+	
+	FloatInspectorMetaInformation meta = 
+	FloatInspectorMetaInformationCreateWithLongDouble(f);
+	
+	FloatInspectorStatisticsUpdateWithMetaInformation(stats, meta);
+	
+	FloatInspectorMetaInformationFree(meta);
+}
+
+void 
+FloatInspectorStatisticsUpdateWithMetaInformation(FloatInspectorStatisticsRef stats,
+												  FloatInspectorMetaInformation meta) {
+	
+	const unsigned int width = stats->nExponentBits + 1;
+	
+	stats->nEntries++;
+	
+	switch (meta.type) {
+		case Normalized:
+		
+			stats->nNormalized++;
+		
+			if (meta.sign == Positive) {
+				
+				stats->nPositive++;
+				stats->nNonZeroBitsNormalizedPositive[meta.nNonZeroMantissaBits * width + meta.nNonZeroExponentBits]++;
+			}
+			else {
+			
+				stats->nNegative++;
+				stats->nNonZeroBitsNormalizedNegative[meta.nNonZeroMantissaBits * width + meta.nNonZeroExponentBits]++;
+			}
+			break;
+			
+		case Denormalized:
+			
+			stats->nDenormalized++;
+			
+			if (meta.sign == Positive) {
+				
+				stats->nPositive++;
+				stats->nNonZeroBitsDenormalizedPositive[meta.nNonZeroMantissaBits]++;
+			}
+			else {
+				
+				stats->nNegative++;
+				stats->nNonZeroBitsDenormalizedNegative[meta.nNonZeroMantissaBits]++;
+			}
+			break;
+			
+		case NaN:
+			
+			stats->nNaN++;
+			break;
+			
+		case Infinity:
+			
+			stats->nInf++;
+			if (meta.sign == Positive) {
+				
+				stats->nPositive++;
+			}
+			else {
+				
+				stats->nNegative++;
+			}
+			break;
+	}
+}
+
+void 
+FloatInspectorStatisticsPrint(const FloatInspectorStatisticsRef stats,
+							  FILE *restrict stream) {
+	
+	fprintf(stream, "--- Statistics ---\n\n");
+	
+	switch (stats->type) {
+		case Float:
+			fprintf(stream, "Type: float\n");
+			break;
+			
+		case Double:
+			fprintf(stream, "Type: double\n");
+			break;
+			
+		case LongDouble:
+			fprintf(stream, "Type: long double\n");
+			break;
+	}
+	
+	/* Coarse grained statistics.  */
+	fprintf(stream,
+			"%u entries overall,\n\n"
+			"%u normalized numbers,\n"
+			"%u denormalized numbers,\n"
+			"%u positive numbers,\n"
+			"%u negatvie numbers,\n"
+			"%u NaNs,\n"
+			"%u times infinity.\n",
+			stats->nEntries,
+			stats->nNormalized,
+			stats->nDenormalized,
+			stats->nPositive,
+			stats->nNegative,
+			stats->nNaN,
+			stats->nInf);
+	
+	/* Fine grained statistics.  */
+	fprintf(stream, 
+			"%u exponent bits,\n"
+			"%u mantissa bits.\n\n",
+			stats->nExponentBits,
+			stats->nMantissaBits);
+	
+	fprintf(stream, "Non-zero bits of positive normalized numbers:\n");
+	
+	for (unsigned int row = 0; row < stats->nMantissaBits + 1; row++) {
+		for (unsigned int col = 0; col < stats->nExponentBits + 1; col++) {
+			
+			const unsigned int idx = row * (stats->nExponentBits + 1) + col;
+			fprintf(stream, 
+					"%u\t", 
+					stats->nNonZeroBitsNormalizedPositive[idx]);
+		}
+		fprintf(stream, "\n");
+	}
+	fprintf(stream, "\n\n");
+	
+	fprintf(stream, "Non-zero bits of negative normalized numbers:\n");
+	
+	for (unsigned int row = 0; row < stats->nMantissaBits + 1; row++) {
+		for (unsigned int col = 0; col < stats->nExponentBits + 1; col++) {
+			
+			const unsigned int idx = row * (stats->nExponentBits + 1) + col;
+			fprintf(stream, 
+					"%u\t", 
+					stats->nNonZeroBitsNormalizedNegative[idx]);
+		}
+		fprintf(stream, "\n");
+	}
+	fprintf(stream, "\n\n");
+	
+	fprintf(stream, "Non-zero bits of positive denormalized numbers:\n");
+	
+	for (unsigned int row = 0; row < stats->nMantissaBits + 1; row++) {
+	
+		fprintf(stream, 
+				"%u\n", 
+				stats->nNonZeroBitsDenormalizedPositive[row]);
+	}
+	fprintf(stream, "\n\n");
+	
+	fprintf(stream, "Non-zero bits of negative denormalized numbers:\n");
+	
+	for (unsigned int row = 0; row < stats->nMantissaBits + 1; row++) {
+		
+		fprintf(stream, 
+				"%u\n", 
+				stats->nNonZeroBitsDenormalizedNegative[row]);
+	}
+	fprintf(stream, "\n\n");
+	
+}
+

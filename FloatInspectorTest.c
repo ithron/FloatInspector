@@ -80,41 +80,67 @@ main(int argc, char **argv) {
 		LDBL_MIN
 	};
 	
-	for (int i = 0; i < sizeof(fvals); i++) {
+	FloatInspectorStatisticsRef restrict statsF = 
+		FloatInspectorStatisticsCreateFloat();
+	
+	FloatInspectorStatisticsRef restrict statsD = 
+		FloatInspectorStatisticsCreateDouble();
+	
+	FloatInspectorStatisticsRef restrict statsLD = 
+		FloatInspectorStatisticsCreateLongDouble();
+	
+	for (int i = 0; i < sizeof(fvals) / sizeof(float); i++) {
 		
 		FloatInspectorMetaInformation meta = 
-		FloatInspectorMetaInformationCreateWithFloat(fvals[i]);
+			FloatInspectorMetaInformationCreateWithFloat(fvals[i]);
+		
+		FloatInspectorStatisticsUpdateWithMetaInformation(statsF, 
+														  meta);
 		
 		const char *descr = FloatInspectorMetaInformationDescription(meta);
 		
 		printf("Float value:\t\t\t\t\t\t%e\n%s\n", fvals[i], descr);
 		
-		FloatInspectorMetaInformationDelete(meta);
+		FloatInspectorMetaInformationFree(meta);
 	}
 	
-	for (int i = 0; i < sizeof(dvals); i++) {
+	for (int i = 0; i < sizeof(dvals) / sizeof(double); i++) {
 		
 		FloatInspectorMetaInformation meta = 
-		FloatInspectorMetaInformationCreateWithDouble(dvals[i]);
+			FloatInspectorMetaInformationCreateWithDouble(dvals[i]);
+		
+		FloatInspectorStatisticsUpdateWithMetaInformation(statsD, 
+														  meta);
 		
 		const char *descr = FloatInspectorMetaInformationDescription(meta);
 		
 		printf("Double value:\t\t\t\t\t\t%e\n%s\n", dvals[i], descr);
 		
-		FloatInspectorMetaInformationDelete(meta);
+		FloatInspectorMetaInformationFree(meta);
 	}
 	
-	for (int i = 0; i < sizeof(ldvals); i++) {
+	for (int i = 0; i < sizeof(ldvals) / sizeof(long double); i++) {
 		
 		FloatInspectorMetaInformation meta = 
-		FloatInspectorMetaInformationCreateWithLongDouble(ldvals[i]);
+			FloatInspectorMetaInformationCreateWithLongDouble(ldvals[i]);
+		
+		FloatInspectorStatisticsUpdateWithMetaInformation(statsLD, 
+														  meta);
 		
 		const char *descr = FloatInspectorMetaInformationDescription(meta);
 		
-		printf("Long Double value:\t\t\t\t\t%e\n%s\n", ldvals[i], descr);
+		printf("Long Double value:\t\t\t\t\t%Le\n%s\n", ldvals[i], descr);
 		
-		FloatInspectorMetaInformationDelete(meta);
+		FloatInspectorMetaInformationFree(meta);
 	}
+	
+	FloatInspectorStatisticsPrint(statsF, stdout);
+	FloatInspectorStatisticsPrint(statsD, stdout);
+	FloatInspectorStatisticsPrint(statsLD, stdout);
+	
+	FloatInspectorStatisticsFree(statsF);
+	FloatInspectorStatisticsFree(statsD);
+	FloatInspectorStatisticsFree(statsLD);
 	
 	
 	return EXIT_SUCCESS;

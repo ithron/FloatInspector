@@ -33,6 +33,7 @@
 #define FloatInspector_FloatInspector_h
 
 #include <inttypes.h>
+#include <stdio.h>
 
 #pragma mark Data Types
 
@@ -78,6 +79,39 @@ typedef struct {
 	
 } FloatInspectorMetaInformation;
 
+/* Datatype to store statistical information about the usage of flaots.  */
+typedef struct {
+	
+	/* Coarse grained statistics.  */
+	unsigned int nEntries;
+	unsigned int nDenormalized;
+	unsigned int nNormalized;
+	unsigned int nNegative;
+	unsigned int nPositive;
+	unsigned int nNaN;
+	unsigned int nInf;
+	
+	enum PrecisionType {
+		Float,
+		Double,
+		LongDouble
+	} type;
+	
+	/* Fine grained statistics.  */
+	unsigned int nBits;
+	unsigned int nExponentBits;
+	unsigned int nMantissaBits;
+	
+	unsigned int * restrict nNonZeroBitsNormalizedPositive;
+	unsigned int * restrict nNonZeroBitsDenormalizedPositive;
+	
+	unsigned int * restrict nNonZeroBitsNormalizedNegative;
+	unsigned int * restrict nNonZeroBitsDenormalizedNegative;
+	
+	
+} _FloatInspectorStatistics;
+typedef _FloatInspectorStatistics* FloatInspectorStatisticsRef;
+
 
 #pragma mark constants
 
@@ -95,10 +129,30 @@ const FloatInspectorMetaInformation
 FloatInspectorMetaInformationCreateWithLongDouble(long double f);
 
 void 
-FloatInspectorMetaInformationDelete(const FloatInspectorMetaInformation meta);
-
+FloatInspectorMetaInformationFree(const FloatInspectorMetaInformation meta);
 
 const char *
 FloatInspectorMetaInformationDescription(const FloatInspectorMetaInformation meta);
+
+FloatInspectorStatisticsRef FloatInspectorStatisticsCreateFloat(void);
+FloatInspectorStatisticsRef FloatInspectorStatisticsCreateDouble(void);
+FloatInspectorStatisticsRef FloatInspectorStatisticsCreateLongDouble(void);
+
+void FloatInspectorStatisticsFree(FloatInspectorStatisticsRef stats);
+
+void FloatInspectorStatisticsUpdateWithFloat(FloatInspectorStatisticsRef stats, 
+									float f);
+
+void FloatInspectorStatisticsUpdateWithDouble(FloatInspectorStatisticsRef stats, 
+									double f);
+
+void FloatInspectorStatisticsUpdateWithLongDouble(FloatInspectorStatisticsRef stats, 
+									long double f);
+
+void FloatInspectorStatisticsUpdateWithMetaInformation(FloatInspectorStatisticsRef stats,
+													   FloatInspectorMetaInformation meta);
+
+void FloatInspectorStatisticsPrint(const FloatInspectorStatisticsRef stats,
+								   FILE *restrict stream);
 
 #endif
