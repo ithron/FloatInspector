@@ -166,8 +166,16 @@ FloatInspectorMetaInformationCreateGeneric(void *f,
 		
 		if ((nZeroBytes << 3) < nExp) {
 			
-			meta.nNonZeroExponentBits = 
-				nExp - ((nZeroBytes << 3) + ((nExp % 8) - nNonZeroBits));
+			if (nZeroBytes > 0) {
+				
+				meta.nNonZeroExponentBits = (nExp % 8) + 
+					((nZeroBytes - 1) << 3) + nNonZeroBits;
+			}
+			else {
+				
+				meta.nNonZeroExponentBits = 
+					nNonZeroBits + ((nExpBytes - 1) << 3);
+			}
 		}
 		else {
 			
@@ -192,14 +200,15 @@ FloatInspectorMetaInformationCreateGeneric(void *f,
 			while (byte != 0) {
 				
 				nNonZeroBits++;
-				byte >>= 1;
+				byte <<= 1;
 			}
 		}
 		
 		if ((nZeroBytes << 3) < nMant) {
 			
-			meta.nNonZeroMantissaBits = 
-				nMant - ((nZeroBytes << 3) + ((nMant % 8) - nNonZeroBits));
+			meta.nNonZeroMantissaBits = nNonZeroBits +
+				((meta.nMantissaBytes - nZeroBytes - 1) << 3) -
+				(8 - (nMant % 8));
 		}
 		else {
 			
@@ -210,7 +219,7 @@ FloatInspectorMetaInformationCreateGeneric(void *f,
 	assert(meta.nNonZeroMantissaBits <= meta.nMantissaBits);
 	
 	/* Determine type.  */
-	if ((meta.nNonZeroExponentBits == 0) && (meta.nNonZeroMantissaBits > 0)) {
+	if (meta.nNonZeroExponentBits == 0) {
 		
 		meta.type = Denormalized;
 	}
